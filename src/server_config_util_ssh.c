@@ -502,7 +502,7 @@ _nc_server_config_add_ssh_user_password(const struct ly_ctx *ctx, const char *tr
 
     NC_CHECK_ARG_RET(NULL, ctx, tree_path, password, config, 1);
 
-    cdata = calloc(1, sizeof(struct crypt_data));
+    cdata = calloc(1, sizeof *cdata);
     NC_CHECK_ERRMEM_GOTO(!cdata, ret = 1, cleanup);
 
     hashed_pw = crypt_r(password, salt, cdata);

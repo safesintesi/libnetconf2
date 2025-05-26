@@ -646,11 +646,8 @@ nc_server_ssh_compare_password(const char *stored_pw, const char *received_pw)
         return strcmp(stored_pw + 3, received_pw);
     }
 
-    cdata = (struct crypt_data *) calloc(sizeof(struct crypt_data), 1);
-    if (cdata == NULL) {
-        ERR(NULL, "Allocation of crypt_data struct failed.");
-        return 1;
-    }
+    cdata = calloc(1, sizeof *cdata);
+    NC_CHECK_ERRMEM_RET(!cdata, 1);
 
     received_pw_hash = crypt_r(received_pw, stored_pw, cdata);
     if (!received_pw_hash) {
