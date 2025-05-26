@@ -474,7 +474,7 @@ nc_server_config_get_private_key_type(const char *format)
 
 #endif /* NC_ENABLED_SSH_TLS */
 
-/* gets the ch_client struct based on node's location in the YANG data tree and locks it for reading */
+/* gets the ch_client struct based on node's location in the YANG data tree and locks it for writing, it is being modified */
 static int
 nc_server_config_get_ch_client_with_lock(const struct lyd_node *node, struct nc_ch_client **ch_client)
 {
@@ -489,7 +489,7 @@ nc_server_config_get_ch_client_with_lock(const struct lyd_node *node, struct nc_
     }
 
     /* LOCK */
-    pthread_rwlock_rdlock(&server_opts.ch_client_lock);
+    pthread_rwlock_wrlock(&server_opts.ch_client_lock);
     for (i = 0; i < server_opts.ch_client_count; i++) {
         if (!strcmp(server_opts.ch_clients[i].name, name)) {
             /* LOCK */
