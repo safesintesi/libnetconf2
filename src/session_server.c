@@ -57,29 +57,28 @@
 struct nc_server_opts server_opts = {
     .hello_lock = PTHREAD_RWLOCK_INITIALIZER,
     .config_lock = PTHREAD_RWLOCK_INITIALIZER,
-    .ch_client_lock = PTHREAD_RWLOCK_INITIALIZER,
     .idle_timeout = 180,    /**< default idle timeout (not in config for UNIX socket) */
 };
 
 static nc_rpc_clb global_rpc_clb = NULL;
 
 #ifdef NC_ENABLED_SSH_TLS
+
 /**
- * @brief Lock CH client structures for reading and lock the specific client.
+ * @brief Get a CH client with the given @p name .
  *
- * @param[in] name Name of the CH client.
+ * @note The configuration read lock must be held.
+ *
+ * @param[in] name Name of the CH client to find.
  * @return CH client, NULL if not found.
  */
 static struct nc_ch_client *
-nc_server_ch_client_lock(const char *name)
+nc_server_ch_client_get(const char *name)
 {
     uint16_t i;
     struct nc_ch_client *client = NULL;
 
     assert(name);
-
-    /* READ LOCK */
-    pthread_rwlock_rdlock(&server_opts.ch_client_lock);
 
     for (i = 0; i < server_opts.ch_client_count; ++i) {
         if (server_opts.ch_clients[i].name && !strcmp(server_opts.ch_clients[i].name, name)) {
@@ -88,30 +87,7 @@ nc_server_ch_client_lock(const char *name)
         }
     }
 
-    if (!client) {
-        /* READ UNLOCK */
-        pthread_rwlock_unlock(&server_opts.ch_client_lock);
-    } else {
-        /* CH CLIENT LOCK */
-        pthread_mutex_lock(&client->lock);
-    }
-
     return client;
-}
-
-/**
- * @brief Unlock CH client strcutures and the specific client.
- *
- * @param[in] endpt Locked CH client structure.
- */
-static void
-nc_server_ch_client_unlock(struct nc_ch_client *client)
-{
-    /* CH CLIENT UNLOCK */
-    pthread_mutex_unlock(&client->lock);
-
-    /* READ UNLOCK */
-    pthread_rwlock_unlock(&server_opts.ch_client_lock);
 }
 
 #endif /* NC_ENABLED_SSH_TLS */
@@ -873,9 +849,6 @@ nc_server_init(void)
     ATOMIC_STORE_RELAXED(server_opts.new_client_id, 1);
 
     if (nc_server_init_rwlock(&server_opts.config_lock)) {
-        goto error;
-    }
-    if (nc_server_init_rwlock(&server_opts.ch_client_lock)) {
         goto error;
     }
 
@@ -2709,8 +2682,8 @@ nc_server_ch_is_client(const char *name)
         return found;
     }
 
-    /* READ LOCK */
-    pthread_rwlock_rdlock(&server_opts.ch_client_lock);
+    /* CONFIG READ LOCK */
+    pthread_rwlock_rdlock(&server_opts.config_lock);
 
     /* check name uniqueness */
     for (i = 0; i < server_opts.ch_client_count; ++i) {
@@ -2720,8 +2693,8 @@ nc_server_ch_is_client(const char *name)
         }
     }
 
-    /* UNLOCK */
-    pthread_rwlock_unlock(&server_opts.ch_client_lock);
+    /* CONFIG READ UNLOCK */
+    pthread_rwlock_unlock(&server_opts.config_lock);
 
     return found;
 }
@@ -2737,8 +2710,8 @@ nc_server_ch_client_is_endpt(const char *client_name, const char *endpt_name)
         return found;
     }
 
-    /* READ LOCK */
-    pthread_rwlock_rdlock(&server_opts.ch_client_lock);
+    /* CONFIG READ LOCK */
+    pthread_rwlock_rdlock(&server_opts.config_lock);
 
     for (i = 0; i < server_opts.ch_client_count; ++i) {
         if (!strcmp(server_opts.ch_clients[i].name, client_name)) {
@@ -2759,15 +2732,15 @@ nc_server_ch_client_is_endpt(const char *client_name, const char *endpt_name)
     }
 
 cleanup:
-    /* UNLOCK */
-    pthread_rwlock_unlock(&server_opts.ch_client_lock);
+    /* CONFIG READ UNLOCK */
+    pthread_rwlock_unlock(&server_opts.config_lock);
     return found;
 }
 
 /**
  * @brief Create a connection for an endpoint.
  *
- * Client lock is expected to be held.
+ * Config read lock must be held - the configuration is being read.
  *
  * @param[in] endpt Endpoint to use.
  * @param[in] acquire_ctx_cb Callback for acquiring the libyang context.
@@ -2922,14 +2895,18 @@ nc_server_ch_client_thread_session_cond_wait(struct nc_ch_client_thread_arg *dat
             break;
         }
 
-        /* check whether the client was not removed */
+        /* CONFIG READ LOCK */
+        pthread_rwlock_rdlock(&server_opts.config_lock);
 
-        /* LOCK */
-        client = nc_server_ch_client_lock(data->client_name);
+        /* check whether the client was not removed */
+        client = nc_server_ch_client_get(data->client_name);
         if (!client) {
             /* client was removed, finish thread */
             VRB(session, "Call Home client \"%s\" removed, but an established session will not be terminated.",
                     data->client_name);
+
+            /* CONFIG READ UNLOCK */
+            pthread_rwlock_unlock(&server_opts.config_lock);
             rc = 1;
             break;
         }
@@ -2947,9 +2924,8 @@ nc_server_ch_client_thread_session_cond_wait(struct nc_ch_client_thread_arg *dat
             session->term_reason = NC_SESSION_TERM_TIMEOUT;
         }
 
-        /* UNLOCK */
-        nc_server_ch_client_unlock(client);
-
+        /* CONFIG READ UNLOCK */
+        pthread_rwlock_unlock(&server_opts.config_lock);
     } while (session->status == NC_STATUS_RUNNING);
 
     /* signal to nc_session_free() that CH thread is terminating */
@@ -3033,30 +3009,31 @@ nc_server_ch_client_thread_is_running(struct nc_ch_client_thread_arg *data)
 }
 
 /**
- * @brief Lock CH client structures for reading and lock the specific client if it has some endpoints, wait otherwise.
+ * @brief Wait for a Call Home client to have at least one endpoint defined.
+ *
+ * @note The configuration read lock is expected to be held.
  *
  * @param[in] name Name of the CH client.
  * @return Pointer to the CH client.
  */
 static struct nc_ch_client *
-nc_server_ch_client_with_endpt_lock(const char *name)
+nc_server_ch_client_with_endpt_get(const char *name)
 {
     struct nc_ch_client *client;
 
     while (1) {
-        /* LOCK */
-        client = nc_server_ch_client_lock(name);
+        /* get the client */
+        client = nc_server_ch_client_get(name);
         if (!client) {
             return NULL;
         }
+
+        /* check if it has at least one endpoint defined */
         if (client->ch_endpt_count) {
             return client;
         }
-        /* no endpoints defined yet */
 
-        /* UNLOCK */
-        nc_server_ch_client_unlock(client);
-
+        /* no endpoints defined yet, wait a little bit */
         usleep(NC_CH_NO_ENDPT_WAIT * 1000);
     }
 
@@ -3082,13 +3059,17 @@ nc_ch_client_thread(void *arg)
     struct nc_ch_client *client;
     uint32_t reconnect_in;
 
-    /* LOCK */
-    client = nc_server_ch_client_with_endpt_lock(data->client_name);
+    /* CONFIG READ LOCK */
+    pthread_rwlock_rdlock(&server_opts.config_lock);
+
+    /* get the client once it has at least one endpoint */
+    client = nc_server_ch_client_with_endpt_get(data->client_name);
     if (!client) {
         VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
         goto cleanup;
     }
 
+    /* config is still locked and ch client has at least 1 endpoint, so select the first one */
     cur_endpt = &client->ch_endpts[0];
     cur_endpt_name = strdup(cur_endpt->name);
 
@@ -3097,10 +3078,11 @@ nc_ch_client_thread(void *arg)
             VRB(NULL, "Call Home client \"%s\" endpoint \"%s\" connecting...", data->client_name, cur_endpt_name);
         }
 
+        /* try to connect to the endpoint */
         msgtype = nc_connect_ch_endpt(cur_endpt, data->acquire_ctx_cb, data->release_ctx_cb, data->ctx_cb_data, &session);
         if (msgtype == NC_MSG_HELLO) {
-            /* UNLOCK */
-            nc_server_ch_client_unlock(client);
+            /* CONFIG READ UNLOCK - session established */
+            pthread_rwlock_unlock(&server_opts.config_lock);
 
             if (!nc_server_ch_client_thread_is_running(data)) {
                 /* thread should stop running */
@@ -3120,11 +3102,14 @@ nc_ch_client_thread(void *arg)
                 goto cleanup;
             }
 
-            /* LOCK */
-            client = nc_server_ch_client_with_endpt_lock(data->client_name);
+            /* CONFIG READ LOCK */
+            pthread_rwlock_rdlock(&server_opts.config_lock);
+
+            /* get the client again, it may have been removed */
+            client = nc_server_ch_client_with_endpt_get(data->client_name);
             if (!client) {
                 VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
-                goto cleanup;
+                goto cleanup_unlock;
             }
 
             /* session changed status -> it was disconnected for whatever reason,
@@ -3138,8 +3123,8 @@ nc_ch_client_thread(void *arg)
                     reconnect_in = client->period * 60;
                 }
 
-                /* UNLOCK */
-                nc_server_ch_client_unlock(client);
+                /* CONFIG READ UNLOCK */
+                pthread_rwlock_unlock(&server_opts.config_lock);
 
                 /* wait for the timeout to elapse, so we can try to reconnect */
                 VRB(session, "Call Home client \"%s\" reconnecting in %" PRIu32 " seconds.", data->client_name, reconnect_in);
@@ -3147,8 +3132,9 @@ nc_ch_client_thread(void *arg)
                     goto cleanup;
                 }
 
-                /* LOCK */
-                client = nc_server_ch_client_with_endpt_lock(data->client_name);
+                /* CONFIG READ LOCK */
+                pthread_rwlock_rdlock(&server_opts.config_lock);
+                client = nc_server_ch_client_with_endpt_get(data->client_name);
                 assert(client);
             }
 
@@ -3175,8 +3161,8 @@ nc_ch_client_thread(void *arg)
             /* session was not created, wait a little bit and try again */
             max_wait = client->max_wait;
 
-            /* UNLOCK */
-            nc_server_ch_client_unlock(client);
+            /* CONFIG READ UNLOCK */
+            pthread_rwlock_unlock(&server_opts.config_lock);
 
             /* wait for max_wait seconds */
             if (!nc_server_ch_client_thread_is_running_wait(session, data, max_wait)) {
@@ -3184,8 +3170,11 @@ nc_ch_client_thread(void *arg)
                 goto cleanup;
             }
 
-            /* LOCK */
-            client = nc_server_ch_client_with_endpt_lock(data->client_name);
+            /* CONFIG READ LOCK */
+            pthread_rwlock_rdlock(&server_opts.config_lock);
+
+            /* get the client */
+            client = nc_server_ch_client_with_endpt_get(data->client_name);
             assert(client);
 
             ++cur_attempts;
@@ -3230,8 +3219,9 @@ nc_ch_client_thread(void *arg)
         cur_endpt_name = strdup(cur_endpt->name);
     }
 
-    /* UNLOCK if we break out of the loop */
-    nc_server_ch_client_unlock(client);
+cleanup_unlock:
+    /* CONFIG READ UNLOCK */
+    pthread_rwlock_unlock(&server_opts.config_lock);
 
 cleanup:
     VRB(session, "Call Home client \"%s\" thread exit.", data->client_name);
@@ -3259,8 +3249,15 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
 
     NC_CHECK_SRV_INIT_RET(-1);
 
-    /* LOCK */
-    ch_client = nc_server_ch_client_lock(client_name);
+    /* CONFIG READ LOCK */
+    pthread_rwlock_rdlock(&server_opts.config_lock);
+
+    /* check ch client existence */
+    ch_client = nc_server_ch_client_get(client_name);
+
+    /* CONFIG READ UNLOCK */
+    pthread_rwlock_unlock(&server_opts.config_lock);
+
     if (!ch_client) {
         ERR(NULL, "Client \"%s\" not found.", client_name);
         return -1;
@@ -3293,9 +3290,6 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
     arg = NULL;
 
 cleanup:
-    /* UNLOCK */
-    nc_server_ch_client_unlock(ch_client);
-
     if (arg) {
         free(arg->client_name);
         free(arg);
@@ -3775,7 +3769,7 @@ nc_server_notif_cert_exp_dates_get(struct nc_interval *intervals, int interval_c
     *exp_dates = NULL;
     *exp_date_count = 0;
 
-    /* CONFIG LOCK */
+    /* CONFIG READ LOCK */
     pthread_rwlock_rdlock(&server_opts.config_lock);
 
     /* first go through listen certs */
@@ -3790,30 +3784,18 @@ nc_server_notif_cert_exp_dates_get(struct nc_interval *intervals, int interval_c
     }
 
     /* then go through all the ch clients and their endpts */
-    /* CH CLIENT LOCK */
-    pthread_rwlock_rdlock(&server_opts.ch_client_lock);
     for (i = 0; i < server_opts.ch_client_count; ++i) {
-        /* CH LOCK */
-        pthread_mutex_lock(&server_opts.ch_clients[i].lock);
         for (j = 0; j < server_opts.ch_clients[i].ch_endpt_count; ++j) {
             if (server_opts.ch_clients[i].ch_endpts[j].ti == NC_TI_TLS) {
                 ret = nc_server_notif_cert_exp_dates_endpt_get(server_opts.ch_clients[i].name,
                         server_opts.ch_clients[i].ch_endpts[j].name, server_opts.ch_clients[i].ch_endpts[j].opts.tls,
                         intervals, interval_count, exp_dates, exp_date_count);
                 if (ret) {
-                    /* CH UNLOCK */
-                    pthread_mutex_unlock(&server_opts.ch_clients[i].lock);
-                    /* CH CLIENT UNLOCK */
-                    pthread_rwlock_unlock(&server_opts.ch_client_lock);
                     goto cleanup;
                 }
             }
         }
-        /* CH UNLOCK */
-        pthread_mutex_unlock(&server_opts.ch_clients[i].lock);
     }
-    /* CH CLIENT UNLOCK */
-    pthread_rwlock_unlock(&server_opts.ch_client_lock);
 
     /* keystore certs */
     for (i = 0; i < ks->asym_key_count; i++) {
@@ -3838,7 +3820,7 @@ nc_server_notif_cert_exp_dates_get(struct nc_interval *intervals, int interval_c
     }
 
 cleanup:
-    /* CONFIG UNLOCK */
+    /* CONFIG READ UNLOCK */
     pthread_rwlock_unlock(&server_opts.config_lock);
     return ret;
 }

@@ -561,8 +561,6 @@ struct nc_server_opts {
     } *endpts;
     uint16_t endpt_count;
 
-    /* ACCESS locked, add/remove CH clients - WRITE lock ch_client_lock
-     *                modify CH clients - READ lock ch_client_lock + ch_client_lock */
     struct nc_ch_client {
         char *name;
         pthread_t tid;                                  /**< Call Home client's thread ID */
@@ -604,10 +602,8 @@ struct nc_server_opts {
         uint8_t max_attempts;
         uint16_t max_wait;
         uint32_t id;
-        pthread_mutex_t lock;
     } *ch_clients;
     uint16_t ch_client_count;
-    pthread_rwlock_t ch_client_lock;
 
 #ifdef NC_ENABLED_SSH_TLS
     struct nc_ch_dispatch_data {
