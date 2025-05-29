@@ -2849,6 +2849,40 @@ fail:
 }
 
 /**
+ * @brief Get idle timeout for a Call Home client.
+ *
+ * @param[in] client_name Name of the Call Home client.
+ * @param[out] idle_timeout Idle timeout in seconds.
+ * @return 0 on success, 1 if the client was not found.
+ */
+static int
+nc_server_ch_client_get_idle_timeout(const char *client_name, uint32_t *idle_timeout)
+{
+    int ret = 0;
+    struct nc_ch_client *client;
+
+    /* CONFIG READ LOCK */
+    pthread_rwlock_rdlock(&server_opts.config_lock);
+
+    client = nc_server_ch_client_get(client_name);
+    if (!client) {
+        ret = 1;
+        goto cleanup;
+    }
+
+    if (client->conn_type == NC_CH_PERIOD) {
+        *idle_timeout = client->idle_timeout;
+    } else {
+        *idle_timeout = 0;
+    }
+
+cleanup:
+    /* CONFIG READ UNLOCK */
+    pthread_rwlock_unlock(&server_opts.config_lock);
+    return ret;
+}
+
+/**
  * @brief Wait for any event after a NC session was established on a CH client.
  *
  * @param[in] data CH client thread argument.
@@ -2863,10 +2897,13 @@ nc_server_ch_client_thread_session_cond_wait(struct nc_ch_client_thread_arg *dat
     int rc = 0, r;
     uint32_t idle_timeout;
     struct timespec ts;
-    struct nc_ch_client *client;
+    const char *client_name;
 
     /* CH LOCK */
     pthread_mutex_lock(&session->opts.server.ch_lock);
+
+    /* save the client name - it can not be modified by any other thread */
+    client_name = data->client_name;
 
     session->flags |= NC_SESSION_CH_THREAD;
 
@@ -2884,6 +2921,7 @@ nc_server_ch_client_thread_session_cond_wait(struct nc_ch_client_thread_arg *dat
         return 0;
     }
 
+    /* entering the loop with locked ch_lock */
     do {
         nc_timeouttime_get(&ts, NC_CH_THREAD_IDLE_TIMEOUT_SLEEP);
 
@@ -2900,38 +2938,33 @@ nc_server_ch_client_thread_session_cond_wait(struct nc_ch_client_thread_arg *dat
             break;
         }
 
-        /* CONFIG READ LOCK */
-        pthread_rwlock_rdlock(&server_opts.config_lock);
+        /* CH UNLOCK */
+        pthread_mutex_unlock(&session->opts.server.ch_lock);
 
-        /* check whether the client was not removed */
-        client = nc_server_ch_client_get(data->client_name);
-        if (!client) {
+        /* check if the client still exists and get its idle timeout */
+        r = nc_server_ch_client_get_idle_timeout(client_name, &idle_timeout);
+        if (r) {
             /* client was removed, finish thread */
             VRB(session, "Call Home client \"%s\" removed, but an established session will not be terminated.",
-                    data->client_name);
-
-            /* CONFIG READ UNLOCK */
-            pthread_rwlock_unlock(&server_opts.config_lock);
+                    client_name);
             rc = 1;
+
+            /* CH LOCK - to remain consistent */
+            pthread_mutex_lock(&session->opts.server.ch_lock);
             break;
         }
 
-        if (client->conn_type == NC_CH_PERIOD) {
-            idle_timeout = client->idle_timeout;
-        } else {
-            idle_timeout = 0;
-        }
+        /* CH LOCK */
+        pthread_mutex_lock(&session->opts.server.ch_lock);
 
         nc_timeouttime_get(&ts, 0);
         if (!nc_session_get_notif_status(session) && idle_timeout && (ts.tv_sec >= session->opts.server.last_rpc + idle_timeout)) {
-            VRB(session, "Call Home client \"%s\": session idle timeout elapsed.", client->name);
+            VRB(session, "Call Home client \"%s\": session idle timeout elapsed.", client_name);
             session->status = NC_STATUS_INVALID;
             session->term_reason = NC_SESSION_TERM_TIMEOUT;
         }
-
-        /* CONFIG READ UNLOCK */
-        pthread_rwlock_unlock(&server_opts.config_lock);
     } while (session->status == NC_STATUS_RUNNING);
+    /* broke out of the loop, but still holding the ch_lock */
 
     /* signal to nc_session_free() that CH thread is terminating */
     session->flags &= ~NC_SESSION_CH_THREAD;
