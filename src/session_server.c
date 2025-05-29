@@ -846,7 +846,6 @@ nc_server_init(void)
     int r;
 
     ATOMIC_STORE_RELAXED(server_opts.new_session_id, 1);
-    ATOMIC_STORE_RELAXED(server_opts.new_client_id, 1);
 
     if (nc_server_init_rwlock(&server_opts.config_lock)) {
         goto error;

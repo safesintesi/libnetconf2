@@ -3231,7 +3231,6 @@ nc_server_config_create_netconf_client(const struct lyd_node *node)
         goto cleanup;
     }
 
-    server_opts.ch_clients[server_opts.ch_client_count - 1].id = ATOMIC_INC_RELAXED(server_opts.new_client_id);
     server_opts.ch_clients[server_opts.ch_client_count - 1].start_with = NC_CH_FIRST_LISTED;
     server_opts.ch_clients[server_opts.ch_client_count - 1].max_attempts = 3;
 

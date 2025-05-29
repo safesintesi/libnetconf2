@@ -633,7 +633,6 @@ struct nc_server_opts {
 
     /* ACCESS unlocked */
     ATOMIC_T new_session_id;
-    ATOMIC_T new_client_id;
 
 #ifdef NC_ENABLED_SSH_TLS
     /* ACCESS unlocked - set from env */
