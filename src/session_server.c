@@ -1016,7 +1016,13 @@ nc_server_set_capability(const char *value)
     pthread_rwlock_wrlock(&server_opts.hello_lock);
 
     mem = realloc(server_opts.capabilities, (server_opts.capabilities_count + 1) * sizeof *server_opts.capabilities);
-    NC_CHECK_ERRMEM_RET(!mem, EXIT_FAILURE);
+    if (!mem) {
+        /* HELLO UNLOCK */
+        pthread_rwlock_unlock(&server_opts.hello_lock);
+        ERRMEM;
+        return EXIT_FAILURE;
+    }
+
     server_opts.capabilities = mem;
 
     server_opts.capabilities[server_opts.capabilities_count] = strdup(value);
