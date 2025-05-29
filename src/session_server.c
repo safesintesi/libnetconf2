@@ -3104,7 +3104,7 @@ nc_ch_client_thread(void *arg)
     client = nc_server_ch_client_with_endpt_get(data->client_name);
     if (!client) {
         VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
-        goto cleanup;
+        goto cleanup_unlock;
     }
 
     /* config is still locked and ch client has at least 1 endpoint, so select the first one */
