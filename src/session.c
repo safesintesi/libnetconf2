@@ -1239,10 +1239,10 @@ nc_server_get_cpblts_version(const struct ly_ctx *ctx, LYS_VERSION version)
             /* get content-id */
             if (server_opts.content_id_clb) {
                 yl_content_id = server_opts.content_id_clb(server_opts.content_id_data);
-                NC_CHECK_ERRMEM_GOTO(!yl_content_id, , error);
+                NC_CHECK_ERRMEM_GOTO(!yl_content_id, , unlock_error);
             } else {
                 yl_content_id = malloc(11);
-                NC_CHECK_ERRMEM_GOTO(!yl_content_id, , error);
+                NC_CHECK_ERRMEM_GOTO(!yl_content_id, , unlock_error);
                 sprintf(yl_content_id, "%u", ly_ctx_get_change_count(ctx));
             }
 
