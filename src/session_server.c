@@ -3249,10 +3249,24 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
     pthread_t tid;
     struct nc_ch_client_thread_arg *arg = NULL;
     struct nc_ch_client *ch_client;
+    pthread_attr_t attr;
 
     NC_CHECK_ARG_RET(NULL, client_name, acquire_ctx_cb, release_ctx_cb, new_session_cb, -1);
 
     NC_CHECK_SRV_INIT_RET(-1);
+
+    /* init pthread attribute */
+    if ((r = pthread_attr_init(&attr))) {
+        ERR(NULL, "Initializing pthread attributes failed (%s).", strerror(r));
+        return -1;
+    }
+
+    /* set the thread to be detached */
+    if ((r = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED))) {
+        ERR(NULL, "Setting pthread attributes to detached failed (%s).", strerror(r));
+        rc = -1;
+        goto cleanup;
+    }
 
     /* CONFIG READ LOCK */
     pthread_rwlock_rdlock(&server_opts.config_lock);
@@ -3265,7 +3279,8 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
 
     if (!ch_client) {
         ERR(NULL, "Client \"%s\" not found.", client_name);
-        return -1;
+        rc = -1;
+        goto cleanup;
     }
 
     /* create the thread argument */
@@ -3283,18 +3298,18 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
 
     /* creating the thread */
     arg->thread_running = 1;
-    if ((r = pthread_create(&tid, NULL, nc_ch_client_thread, arg))) {
+    if ((r = pthread_create(&tid, &attr, nc_ch_client_thread, arg))) {
         ERR(NULL, "Creating a new thread failed (%s).", strerror(r));
         rc = -1;
         goto cleanup;
     }
 
     /* the thread now manages arg */
-    ch_client->tid = tid;
     ch_client->thread_data = arg;
     arg = NULL;
 
 cleanup:
+    pthread_attr_destroy(&attr);
     if (arg) {
         free(arg->client_name);
         free(arg);

@@ -872,22 +872,18 @@ nc_server_config_ch_del_endpt(struct nc_ch_client *ch_client, struct nc_ch_endpt
 static void
 nc_server_config_destroy_ch_client(struct nc_ch_client *ch_client)
 {
-    pthread_t tid;
     uint16_t i, ch_endpt_count;
 
     /* CH COND LOCK */
     pthread_mutex_lock(&ch_client->thread_data->cond_lock);
     if (ch_client->thread_data->thread_running) {
+        /* notify the thread to exit,
+         * it will stop once the current thread is finished applying the configuration
+         * and releases the config lock */
         ch_client->thread_data->thread_running = 0;
         pthread_cond_signal(&ch_client->thread_data->cond);
         /* CH COND UNLOCK */
         pthread_mutex_unlock(&ch_client->thread_data->cond_lock);
-
-        /* get tid */
-        tid = ch_client->tid;
-
-        /* wait for the thread to terminate */
-        pthread_join(tid, NULL);
     } else {
         /* CH COND UNLOCK */
         pthread_mutex_unlock(&ch_client->thread_data->cond_lock);

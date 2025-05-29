@@ -557,7 +557,6 @@ struct nc_server_opts {
 
     struct nc_ch_client {
         char *name;                                     /**< Identifier of the Call Home client. */
-        pthread_t tid;                                  /**< Call Home client's thread ID */
         struct nc_ch_client_thread_arg *thread_data;    /**< Data of the Call Home client's thread */
 
         struct nc_ch_endpt {
