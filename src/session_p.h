@@ -504,25 +504,24 @@ struct nc_ch_client_thread_arg {
 
 struct nc_server_opts {
     /* ACCESS locked - hello lock - separate lock to not always hold config_lock */
-    char **ignored_modules;         /**< Names of YANG modules that are not reported in the server <hello> message. */
-    uint16_t ignored_mod_count;
-    NC_WD_MODE wd_basic_mode;       /**< With-defaults basic mode of the server. */
-    int wd_also_supported;          /**< Bitmap of with-defaults modes that are also supported by the server. */
-    char **capabilities;
-    uint32_t capabilities_count;
-
-    char *(*content_id_clb)(void *user_data);   /**< Callback for generating content_id for ietf-yang-library data. */
-    void *content_id_data;
-    void (*content_id_data_free)(void *data);
-
     pthread_rwlock_t hello_lock;    /**< Needs to be held while the server <hello> message is being generated. */
 
-    /* ACCESS unlocked */
-    uint16_t idle_timeout;
+    char **ignored_modules;         /**< Names of YANG modules that are not reported in the server <hello> message. */
+    uint16_t ignored_mod_count;     /**< Number of ignored modules. */
+    NC_WD_MODE wd_basic_mode;       /**< With-defaults basic mode of the server. */
+    int wd_also_supported;          /**< Bitmap of with-defaults modes that are also supported by the server. */
+    char **capabilities;            /**< Array of server's capabilities. */
+    uint32_t capabilities_count;    /**< Number of server's capabilities. */
+
+    char *(*content_id_clb)(void *user_data);   /**< Callback for generating content_id for ietf-yang-library data. */
+    void *content_id_data;                      /**< Data passed to the content_id_clb callback. */
+    void (*content_id_data_free)(void *data);   /**< Callback to free the content_id_data. */
 
     /* ACCESS locked - options modified by YANG data/API - WRITE lock
      *               - options read when accepting sessions - READ lock */
     pthread_rwlock_t config_lock;
+
+    uint16_t idle_timeout;              /**< Idle timeout of the server sessions. */
 
 #ifdef NC_ENABLED_SSH_TLS
     char *authkey_path_fmt;             /**< Path to users' public keys that may contain tokens with special meaning. */
@@ -532,112 +531,112 @@ struct nc_server_opts {
     void (*interactive_auth_data_free)(void *data);
 
     int (*user_verify_clb)(const struct nc_session *session);
+
+    struct nc_keystore keystore;        /**< Stored asymmetric and symmetric keys used by the server. */
+    struct nc_truststore truststore;    /**< Stored certificates and public keys used for authentication. */
 #endif /* NC_ENABLED_SSH_TLS */
 
-#ifdef NC_ENABLED_SSH_TLS
-    struct nc_keystore keystore;        /**< Server's keys/certificates. */
-    struct nc_truststore truststore;    /**< Server client's keys/certificates. */
-#endif /* NC_ENABLED_SSH_TLS */
-
-    /* ACCESS locked */
-    struct nc_bind *binds;
-    pthread_mutex_t bind_lock;          /**< To avoid concurrent calls of poll and accept on the bound sockets **/
     struct nc_endpt {
-        char *name;
+        char *name;                     /**< Identifier of the endpoint. */
 #ifdef NC_ENABLED_SSH_TLS
-        char *referenced_endpt_name;
+        char *referenced_endpt_name;    /**< Reference to another endpoint (used for client authentication). */
 #endif /* NC_ENABLED_SSH_TLS */
-        NC_TRANSPORT_IMPL ti;
-        struct nc_keepalives ka;
 
+        struct nc_keepalives ka;        /**< Keepalives configuration data. */
+
+        NC_TRANSPORT_IMPL ti;           /**< Transport implementation of the endpoint. */
         union {
 #ifdef NC_ENABLED_SSH_TLS
-            struct nc_server_ssh_opts *ssh;
-
-            struct nc_server_tls_opts *tls;
+            struct nc_server_ssh_opts *ssh;         /**< SSH transport options. */
+            struct nc_server_tls_opts *tls;         /**< TLS transport options. */
 #endif /* NC_ENABLED_SSH_TLS */
-            struct nc_server_unix_opts *unixsock;
+            struct nc_server_unix_opts *unixsock;   /**< UNIX socket transport options. */
         } opts;
-    } *endpts;
-    uint16_t endpt_count;
+    } *endpts;                          /**< Array of server's endpoints. */
+    uint16_t endpt_count;               /**< Number of server's endpoints. */
 
     struct nc_ch_client {
-        char *name;
+        char *name;                                     /**< Identifier of the Call Home client. */
         pthread_t tid;                                  /**< Call Home client's thread ID */
         struct nc_ch_client_thread_arg *thread_data;    /**< Data of the Call Home client's thread */
 
         struct nc_ch_endpt {
-            char *name;
+            char *name;                     /**< Identifier of the Call Home endpoint. */
 #ifdef NC_ENABLED_SSH_TLS
-            char *referenced_endpt_name;
+            char *referenced_endpt_name;    /**< Reference to another endpoint (used for client authentication). */
 #endif /* NC_ENABLED_SSH_TLS */
-            NC_TRANSPORT_IMPL ti;
 
-            char *src_addr;                             /**< IP address to bind to when connecting to a Call Home client. */
-            uint16_t src_port;                          /**< Port to bind to when connecting to a Call Home client. */
-            char *dst_addr;                             /**< IP address of the Call Home client. */
-            uint16_t dst_port;                          /**< Port of the Call Home client. */
+            char *src_addr;                 /**< IP address to bind to when connecting to a Call Home client. */
+            uint16_t src_port;              /**< Port to bind to when connecting to a Call Home client. */
+            char *dst_addr;                 /**< IP address of the Call Home client. */
+            uint16_t dst_port;              /**< Port of the Call Home client. */
 
-            int sock_pending;
-            struct nc_keepalives ka;
+            int sock_pending;               /**< Socket file descriptor of the pending connection to the Call Home client. */
+            struct nc_keepalives ka;        /**< Keepalives configuration data for the Call Home endpoint. */
 
+            NC_TRANSPORT_IMPL ti;           /**< Transport implementation of the Call Home endpoint. */
             union {
 #ifdef NC_ENABLED_SSH_TLS
-                struct nc_server_ssh_opts *ssh;
-
-                struct nc_server_tls_opts *tls;
+                struct nc_server_ssh_opts *ssh;     /**< SSH transport options for the Call Home endpoint. */
+                struct nc_server_tls_opts *tls;     /**< TLS transport options for the Call Home endpoint. */
 #endif /* NC_ENABLED_SSH_TLS */
             } opts;
-        } *ch_endpts;
-        uint16_t ch_endpt_count;
+        } *ch_endpts;                   /**< Array of Call Home endpoints. */
+        uint16_t ch_endpt_count;        /**< Number of Call Home endpoints. */
 
-        NC_CH_CONN_TYPE conn_type;
+        NC_CH_CONN_TYPE conn_type;      /**< Type of the Call Home connection. */
         struct {
-            uint16_t period;
-            time_t anchor_time;
-            uint16_t idle_timeout;
+            uint16_t period;            /**< Period of a periodic Call Home connection in seconds. */
+            time_t anchor_time;         /**< Anchor time of a periodic Call Home connection. */
+            uint16_t idle_timeout;      /**< Idle timeout of a periodic Call Home connection in seconds. */
         };
 
-        NC_CH_START_WITH start_with;
-        uint8_t max_attempts;
-        uint16_t max_wait;
+        NC_CH_START_WITH start_with;    /**< How to select the Call Home endpoint to connect to. */
+        uint8_t max_attempts;           /**< Maximum number of attempts to connect to the given Call Home endpoint. */
+        uint16_t max_wait;              /**< Maximum time to wait for a Call Home connection in seconds. */
         uint32_t id;
-    } *ch_clients;
-    uint16_t ch_client_count;
+    } *ch_clients;                      /**< Array of Call Home clients. */
+    uint16_t ch_client_count;           /**< Number of Call Home clients. */
 
 #ifdef NC_ENABLED_SSH_TLS
+    /**
+     * @brief Data for dispatching Call Home clients.
+     */
     struct nc_ch_dispatch_data {
-        nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb;
-        nc_server_ch_session_release_ctx_cb release_ctx_cb;
-        void *ctx_cb_data;
-        nc_server_ch_new_session_cb new_session_cb;
-        void *new_session_cb_data;
+        nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb;     /**< Acquiring libyang context callback. */
+        nc_server_ch_session_release_ctx_cb release_ctx_cb;     /**< Releasing libyang context callback. */
+        void *ctx_cb_data;                                      /**< Data passed to the callbacks above. */
+        nc_server_ch_new_session_cb new_session_cb;             /**< New session callback. */
+        void *new_session_cb_data;                              /**< Data passed to the new_session_cb callback. */
     } ch_dispatch_data;
+
+    struct {
+        pthread_t tid;              /**< Thread ID of the certificate expiration notification thread. */
+        int thread_running;         /**< Flag representing the runningness of the cert exp notification thread. */
+        pthread_mutex_t lock;       /**< Certificate expiration notification thread's data and cond lock. */
+        pthread_cond_t cond;        /**< Condition for the certificate expiration notification thread. */
+
+        /**
+         * @brief Intervals for certificate expiration notifications.
+         */
+        struct nc_interval {
+            struct nc_cert_exp_time anchor;     /**< Lower bound of the given interval. */
+            struct nc_cert_exp_time period;     /**< Period of the given interval. */
+        } *intervals;
+        int interval_count;                     /**< Number of intervals. */
+    } cert_exp_notif;
 #endif /* NC_ENABLED_SSH_TLS */
+
+    /* ACCESS locked - bind_lock */
+    struct nc_bind *binds;              /**< Array of server's socket binds. The count is the same as endpt_count. */
+    pthread_mutex_t bind_lock;          /**< To avoid concurrent calls of poll and accept on the bound sockets. **/
 
     /* ACCESS unlocked */
     ATOMIC_T new_session_id;
     ATOMIC_T new_client_id;
 
 #ifdef NC_ENABLED_SSH_TLS
-    /* ACCESS locked */
-    struct {
-        pthread_t tid;                      /**< Thread ID of the certificate expiration notification thread. */
-        int thread_running;                 /**< Flag representing the runningness of the cert exp notification thread. */
-        pthread_mutex_t lock;               /**< Certificate expiration notification thread's data and cond lock. */
-        pthread_cond_t cond;                /**< Condition for the certificate expiration notification thread. */
-
-        /**
-         * @brief Intervals for certificate expiration notifications.
-         */
-        struct nc_interval {
-            struct nc_cert_exp_time anchor; /**< Lower bound of the given interval. */
-            struct nc_cert_exp_time period; /**< Period of the given interval. */
-        } *intervals;
-        int interval_count;                 /**< Number of intervals. */
-    } cert_exp_notif;
-
-    /* ACCESS unlocked */
+    /* ACCESS unlocked - set from env */
     FILE *tls_keylog_file;                  /**< File to log TLS secrets to. */
 #endif
 };
