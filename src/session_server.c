@@ -3057,15 +3057,16 @@ nc_server_ch_client_thread_is_running(struct nc_ch_client_thread_arg *data)
  *
  * @note The configuration read lock is expected to be held.
  *
+ * @param[in] data Call Home client thread argument.
  * @param[in] name Name of the CH client.
- * @return Pointer to the CH client.
+ * @return Pointer to the CH client, NULL if the client was removed.
  */
 static struct nc_ch_client *
-nc_server_ch_client_with_endpt_get(const char *name)
+nc_server_ch_client_with_endpt_get(struct nc_ch_client_thread_arg *data, const char *name)
 {
     struct nc_ch_client *client;
 
-    while (1) {
+    while (nc_server_ch_client_thread_is_running(data)) {
         /* get the client */
         client = nc_server_ch_client_get(name);
         if (!client) {
@@ -3077,10 +3078,17 @@ nc_server_ch_client_with_endpt_get(const char *name)
             return client;
         }
 
+        /* CONFIG READ UNLOCK - allow another thread to modify the configuration */
+        pthread_rwlock_unlock(&server_opts.config_lock);
+
         /* no endpoints defined yet, wait a little bit */
         usleep(NC_CH_NO_ENDPT_WAIT * 1000);
+
+        /* CONFIG READ LOCK */
+        pthread_rwlock_rdlock(&server_opts.config_lock);
     }
 
+    /* thread is not running */
     return NULL;
 }
 
@@ -3107,7 +3115,7 @@ nc_ch_client_thread(void *arg)
     pthread_rwlock_rdlock(&server_opts.config_lock);
 
     /* get the client once it has at least one endpoint */
-    client = nc_server_ch_client_with_endpt_get(data->client_name);
+    client = nc_server_ch_client_with_endpt_get(data, data->client_name);
     if (!client) {
         VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
         goto cleanup_unlock;
@@ -3150,7 +3158,7 @@ nc_ch_client_thread(void *arg)
             pthread_rwlock_rdlock(&server_opts.config_lock);
 
             /* get the client again, it may have been removed */
-            client = nc_server_ch_client_with_endpt_get(data->client_name);
+            client = nc_server_ch_client_with_endpt_get(data, data->client_name);
             if (!client) {
                 VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
                 goto cleanup_unlock;
@@ -3178,8 +3186,12 @@ nc_ch_client_thread(void *arg)
 
                 /* CONFIG READ LOCK */
                 pthread_rwlock_rdlock(&server_opts.config_lock);
-                client = nc_server_ch_client_with_endpt_get(data->client_name);
-                assert(client);
+
+                client = nc_server_ch_client_with_endpt_get(data, data->client_name);
+                if (!client) {
+                    VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
+                    goto cleanup_unlock;
+                }
             }
 
             /* set next endpoint to try */
@@ -3218,8 +3230,11 @@ nc_ch_client_thread(void *arg)
             pthread_rwlock_rdlock(&server_opts.config_lock);
 
             /* get the client */
-            client = nc_server_ch_client_with_endpt_get(data->client_name);
-            assert(client);
+            client = nc_server_ch_client_with_endpt_get(data, data->client_name);
+            if (!client) {
+                VRB(NULL, "Call Home client \"%s\" removed.", data->client_name);
+                goto cleanup_unlock;
+            }
 
             ++cur_attempts;
 
