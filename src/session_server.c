@@ -3294,20 +3294,16 @@ cleanup:
     return NULL;
 }
 
-API int
-nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb,
+int
+_nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb,
         nc_server_ch_session_release_ctx_cb release_ctx_cb, void *ctx_cb_data, nc_server_ch_new_session_cb new_session_cb,
-        void *new_session_cb_data)
+        void *new_session_cb_data, int config_locked)
 {
     int rc = 0, r;
     pthread_t tid;
     struct nc_ch_client_thread_arg *arg = NULL;
     struct nc_ch_client *ch_client;
     pthread_attr_t attr;
-
-    NC_CHECK_ARG_RET(NULL, client_name, acquire_ctx_cb, release_ctx_cb, new_session_cb, -1);
-
-    NC_CHECK_SRV_INIT_RET(-1);
 
     /* init pthread attribute */
     if ((r = pthread_attr_init(&attr))) {
@@ -3322,14 +3318,18 @@ nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acqu
         goto cleanup;
     }
 
-    /* CONFIG READ LOCK */
-    pthread_rwlock_rdlock(&server_opts.config_lock);
+    if (!config_locked) {
+        /* CONFIG READ LOCK */
+        pthread_rwlock_rdlock(&server_opts.config_lock);
+    }
 
     /* check ch client existence */
     ch_client = nc_server_ch_client_get(client_name);
 
-    /* CONFIG READ UNLOCK */
-    pthread_rwlock_unlock(&server_opts.config_lock);
+    if (!config_locked) {
+        /* CONFIG READ UNLOCK */
+        pthread_rwlock_unlock(&server_opts.config_lock);
+    }
 
     if (!ch_client) {
         ERR(NULL, "Client \"%s\" not found.", client_name);
@@ -3369,6 +3369,19 @@ cleanup:
         free(arg);
     }
     return rc;
+}
+
+API int
+nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb,
+        nc_server_ch_session_release_ctx_cb release_ctx_cb, void *ctx_cb_data, nc_server_ch_new_session_cb new_session_cb,
+        void *new_session_cb_data)
+{
+    NC_CHECK_ARG_RET(NULL, client_name, acquire_ctx_cb, release_ctx_cb, new_session_cb, -1);
+
+    NC_CHECK_SRV_INIT_RET(-1);
+
+    return _nc_connect_ch_client_dispatch(client_name, acquire_ctx_cb, release_ctx_cb, ctx_cb_data,
+            new_session_cb, new_session_cb_data, 0);
 }
 
 #endif /* NC_ENABLED_SSH_TLS */

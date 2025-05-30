@@ -1182,6 +1182,22 @@ NC_MSG_TYPE nc_connect_callhome(const char *host, uint16_t port, NC_TRANSPORT_IM
 #ifdef NC_ENABLED_SSH_TLS
 
 /**
+ * @brief Dispatch a thread connecting to a listening NETCONF client and creating Call Home sessions.
+ *
+ * @param[in] client_name Existing client name.
+ * @param[in] acquire_ctx_cb Callback for acquiring new session context.
+ * @param[in] release_ctx_cb Callback for releasing session context.
+ * @param[in] ctx_cb_data Arbitrary user data passed to @p acquire_ctx_cb and @p release_ctx_cb.
+ * @param[in] new_session_cb Callback called for every established session on the client.
+ * @param[in] new_session_cb_data Arbitrary user data passed to @p new_session_cb.
+ * @param[in] config_locked Whether the server configuration is locked.
+ * @return 0 if the thread was successfully created, -1 on error.
+ */
+int _nc_connect_ch_client_dispatch(const char *client_name, nc_server_ch_session_acquire_ctx_cb acquire_ctx_cb,
+        nc_server_ch_session_release_ctx_cb release_ctx_cb, void *ctx_cb_data, nc_server_ch_new_session_cb new_session_cb,
+        void *new_session_cb_data, int config_locked);
+
+/**
  * @brief Accept a server Call Home connection on a socket.
  *
  * @param[in] sock Socket with a new connection.
