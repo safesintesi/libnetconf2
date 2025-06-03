@@ -75,6 +75,54 @@ test_nc_tls(void **state)
 }
 
 static void
+test_nc_tls_ca_cert_only(void **state)
+{
+    int ret, i;
+    pthread_t tids[2];
+    struct ln2_test_ctx *test_ctx = *state;
+
+    /* delete a client certificate so that only CA certs are used */
+    assert_int_equal(nc_server_config_del_tls_client_cert("endpt",
+            "client_cert", (struct lyd_node **)&test_ctx->test_data), 0);
+
+    /* apply the configuration */
+    assert_int_equal(nc_server_config_setup_data(test_ctx->test_data), 0);
+
+    ret = pthread_create(&tids[0], NULL, client_thread, *state);
+    assert_int_equal(ret, 0);
+    ret = pthread_create(&tids[1], NULL, ln2_glob_test_server_thread, *state);
+    assert_int_equal(ret, 0);
+
+    for (i = 0; i < 2; i++) {
+        pthread_join(tids[i], NULL);
+    }
+}
+
+static void
+test_nc_tls_ee_cert_only(void **state)
+{
+    int ret, i;
+    pthread_t tids[2];
+    struct ln2_test_ctx *test_ctx = *state;
+
+    /* delete a CA certificate so that only end entity client cert is used */
+    assert_int_equal(nc_server_config_del_tls_ca_cert("endpt",
+            "client_ca", (struct lyd_node **)&test_ctx->test_data), 0);
+
+    /* apply the configuration */
+    assert_int_equal(nc_server_config_setup_data(test_ctx->test_data), 0);
+
+    ret = pthread_create(&tids[0], NULL, client_thread, *state);
+    assert_int_equal(ret, 0);
+    ret = pthread_create(&tids[1], NULL, ln2_glob_test_server_thread, *state);
+    assert_int_equal(ret, 0);
+
+    for (i = 0; i < 2; i++) {
+        pthread_join(tids[i], NULL);
+    }
+}
+
+static void
 test_nc_tls_ec_key(void **state)
 {
     int ret, i;
@@ -223,6 +271,8 @@ main(void)
 {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_setup_teardown(test_nc_tls, setup_f, ln2_glob_test_teardown),
+        cmocka_unit_test_setup_teardown(test_nc_tls_ca_cert_only, setup_f, ln2_glob_test_teardown),
+        cmocka_unit_test_setup_teardown(test_nc_tls_ee_cert_only, setup_f, ln2_glob_test_teardown),
         cmocka_unit_test_setup_teardown(test_nc_tls_ec_key, setup_f, ln2_glob_test_teardown),
         cmocka_unit_test_setup_teardown(test_nc_tls_keylog, keylog_setup_f, ln2_glob_test_teardown)
     };
