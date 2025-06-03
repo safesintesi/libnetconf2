@@ -383,6 +383,9 @@ nc_server_tls_verify_cb(int preverify_ok, X509_STORE_CTX *x509_ctx)
             /* copy the client cert */
             data->session->opts.server.client_cert = X509_dup(cert);
             NC_CHECK_ERRMEM_RET(!data->session->opts.server.client_cert, 0);
+
+            /* verification was successful, override the in-built verification result */
+            X509_STORE_CTX_set_error(x509_ctx, X509_V_OK);
         }
         return 1;
     } else {
