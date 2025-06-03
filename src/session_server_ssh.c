@@ -1350,6 +1350,9 @@ nc_server_ssh_auth_kbdint(struct nc_session *session, int local_users_supported,
         return 1;
     } else if (server_opts.interactive_auth_clb) {
         rc = server_opts.interactive_auth_clb(session, session->ti.libssh.session, msg, server_opts.interactive_auth_data);
+    } else if (!local_users_supported) {
+        /* no local users supported, use the system method */
+        rc = nc_server_ssh_auth_kbdint_system(session, msg);
     } else {
         /* perform the authentication based on the configured method */
         if (auth_client->kbdint_method == NC_KBDINT_AUTH_METHOD_SYSTEM) {
