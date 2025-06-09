@@ -885,7 +885,7 @@ nc_accept_tls_session(struct nc_session *session, struct nc_server_tls_opts *opt
     srv_cert = srv_pkey = cert_store = crl_store = NULL;
 
     /* setup config from ctx */
-    if (nc_tls_setup_config_from_ctx_wrap(&session->ti.tls.ctx, NC_SERVER, tls_cfg)) {
+    if (nc_tls_setup_config_from_ctx_wrap(&session->ti.tls.ctx, tls_cfg)) {
         goto fail;
     }
     session->ti.tls.config = tls_cfg;

@@ -777,7 +777,7 @@ nc_tls_move_crls_to_store(const X509_STORE *src, X509_STORE *dst)
 }
 
 int
-nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, int side, void *tls_cfg)
+nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, void *tls_cfg)
 {
     if (SSL_CTX_use_certificate(tls_cfg, tls_ctx->cert) != 1) {
         ERR(NULL, "Setting up TLS certificate failed (%s).", ERR_reason_error_string(ERR_get_error()));
@@ -787,11 +787,6 @@ nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, int side, void *tl
     if (SSL_CTX_use_PrivateKey(tls_cfg, tls_ctx->pkey) != 1) {
         ERR(NULL, "Setting up TLS private key failed (%s).", ERR_reason_error_string(ERR_get_error()));
         return 1;
-    }
-
-    /* disable server-side automatic chain building */
-    if (side == NC_SERVER) {
-        SSL_CTX_set_mode(tls_cfg, SSL_MODE_NO_AUTO_CHAIN);
     }
 
     if (tls_ctx->crl_store) {

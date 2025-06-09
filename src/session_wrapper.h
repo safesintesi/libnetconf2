@@ -451,11 +451,10 @@ int nc_tls_init_ctx_wrap(void *cert, void *pkey, void *cert_store, void *crl_sto
  * @brief Setup a TLS configuration from a TLS context.
  *
  * @param[in] tls_ctx TLS context.
- * @param[in] side Side of the TLS connection.
  * @param[in,out] tls_cfg TLS configuration.
  * @return 0 on success, non-zero on fail.
  */
-int nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, int side, void *tls_cfg);
+int nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, void *tls_cfg);
 
 /**
  * @brief Get the error code from a TLS session's verification.

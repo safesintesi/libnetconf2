@@ -295,14 +295,29 @@ nc_tls_session_destroy_wrap(void *tls_session)
 }
 
 void *
-nc_tls_config_new_wrap(int UNUSED(side))
+nc_tls_config_new_wrap(int side)
 {
+    int r;
     mbedtls_ssl_config *tls_cfg;
 
     tls_cfg = malloc(sizeof *tls_cfg);
     NC_CHECK_ERRMEM_RET(!tls_cfg, NULL);
 
     mbedtls_ssl_config_init(tls_cfg);
+
+    /* set default config data */
+    if (side == NC_SERVER) {
+        r = mbedtls_ssl_config_defaults(tls_cfg, MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
+    } else {
+        r = mbedtls_ssl_config_defaults(tls_cfg, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
+    }
+    if (r) {
+        nc_mbedtls_strerr(NULL, r, "Setting default TLS config failed");
+        mbedtls_ssl_config_free(tls_cfg);
+        free(tls_cfg);
+        return NULL;
+    }
+
     return tls_cfg;
 }
 
@@ -1143,27 +1158,15 @@ nc_tls_init_ctx_wrap(void *cert, void *pkey, void *cert_store, void *crl_store, 
 }
 
 int
-nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, int side, void *tls_cfg)
+nc_tls_setup_config_from_ctx_wrap(struct nc_tls_ctx *tls_ctx, void *tls_cfg)
 {
-    int rc;
-
-    /* set default config data */
-    if (side == NC_SERVER) {
-        rc = mbedtls_ssl_config_defaults(tls_cfg, MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
-    } else {
-        rc = mbedtls_ssl_config_defaults(tls_cfg, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
-    }
-    if (rc) {
-        nc_mbedtls_strerr(NULL, rc, "Setting default TLS config failed");
-        return 1;
-    }
-
     /* set config's rng */
     mbedtls_ssl_conf_rng(tls_cfg, mbedtls_ctr_drbg_random, tls_ctx->ctr_drbg);
     /* set config's cert and key */
     mbedtls_ssl_conf_own_cert(tls_cfg, tls_ctx->cert, tls_ctx->pkey);
     /* set config's CA and CRL cert store */
     mbedtls_ssl_conf_ca_chain(tls_cfg, tls_ctx->cert_store, tls_ctx->crl_store);
+
     return 0;
 }
 

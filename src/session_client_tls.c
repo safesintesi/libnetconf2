@@ -304,7 +304,7 @@ nc_client_tls_session_new(int sock, const char *host, int timeout, struct nc_cli
     cli_cert = cli_pkey = cert_store = crl_store = NULL;
 
     /* setup config from ctx */
-    if (nc_tls_setup_config_from_ctx_wrap(tls_ctx, NC_CLIENT, tls_cfg)) {
+    if (nc_tls_setup_config_from_ctx_wrap(tls_ctx, tls_cfg)) {
         goto fail;
     }
 
