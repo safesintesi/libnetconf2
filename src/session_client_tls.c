@@ -293,7 +293,9 @@ nc_client_tls_session_new(int sock, const char *host, int timeout, struct nc_cli
     }
 
     /* set client's verify mode flags */
-    nc_client_tls_set_verify_wrap(tls_cfg);
+    if (nc_client_tls_set_verify_wrap(tls_cfg)) {
+        goto fail;
+    }
 
     /* init TLS context and store data which may be needed later in it */
     if (nc_tls_init_ctx_wrap(cli_cert, cli_pkey, cert_store, crl_store, tls_ctx)) {

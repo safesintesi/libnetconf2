@@ -674,10 +674,11 @@ nc_server_tls_set_verify_wrap(void *tls_cfg, struct nc_tls_verify_cb_data *cb_da
     mbedtls_ssl_conf_verify(tls_cfg, nc_server_tls_verify_cb, cb_data);
 }
 
-void
+int
 nc_client_tls_set_verify_wrap(void *tls_cfg)
 {
     mbedtls_ssl_conf_authmode(tls_cfg, MBEDTLS_SSL_VERIFY_REQUIRED);
+    return 0;
 }
 
 char *

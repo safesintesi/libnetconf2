@@ -219,8 +219,9 @@ void nc_server_tls_set_verify_wrap(void *tls_cfg, struct nc_tls_verify_cb_data *
  * @brief Set TLS client's verify flags.
  *
  * @param[in] tls_cfg TLS configuration.
+ * @return 0 on success, 1 on error.
  */
-void nc_client_tls_set_verify_wrap(void *tls_cfg);
+int nc_client_tls_set_verify_wrap(void *tls_cfg);
 
 /**
  * @brief Verify the certificate.

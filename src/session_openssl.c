@@ -407,10 +407,38 @@ nc_server_tls_set_verify_wrap(void *tls_cfg, struct nc_tls_verify_cb_data *cb_da
     SSL_CTX_set_verify(tls_cfg, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, nc_server_tls_verify_cb);
 }
 
-void
+int
 nc_client_tls_set_verify_wrap(void *tls_cfg)
 {
+    int ret = 0;
+    X509_VERIFY_PARAM *vpm = NULL;
+
+    /* set the verify flag */
     SSL_CTX_set_verify(tls_cfg, SSL_VERIFY_PEER, NULL);
+
+    vpm = X509_VERIFY_PARAM_new();
+    NC_CHECK_ERRMEM_RET(!vpm, 1);
+
+    /* set the partial chain flag to allow verification of a certificate chain
+     * to succeed even if the chain is not complete.
+     * See https://github.com/openssl/openssl/issues/7871
+     * This is not set for the server, because all the CA certs in the chain
+     * may be needed for CTN, so such partial chain cases are handled manually. */
+    if (!X509_VERIFY_PARAM_set_flags(vpm, X509_V_FLAG_PARTIAL_CHAIN)) {
+        ERR(NULL, "Setting X509_V_FLAG_PARTIAL_CHAIN flag failed (%s).", ERR_reason_error_string(ERR_get_error()));
+        ret = 1;
+        goto cleanup;
+    }
+
+    if (!SSL_CTX_set1_param(tls_cfg, vpm)) {
+        ERR(NULL, "Failed to set verify param (%s).", ERR_reason_error_string(ERR_get_error()));
+        ret = 1;
+        goto cleanup;
+    }
+
+cleanup:
+    X509_VERIFY_PARAM_free(vpm);
+    return ret;
 }
 
 char *
