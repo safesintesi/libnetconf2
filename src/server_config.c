@@ -3080,7 +3080,7 @@ nc_server_config_map_type(const struct lyd_node *node, enum nc_operation UNUSED(
     int ret = 0;
     struct nc_ctn *ctn;
     struct nc_ch_client *ch_client = NULL;
-    const char *map_type, *name = NULL;
+    const char *map_type;
     NC_TLS_CTN_MAPTYPE m_type;
 
     assert(!strcmp(LYD_NAME(node), "map-type"));
@@ -3097,10 +3097,6 @@ nc_server_config_map_type(const struct lyd_node *node, enum nc_operation UNUSED(
     map_type = ((struct lyd_node_term *)node)->value.ident->name;
     if (!strcmp(map_type, "specified")) {
         m_type = NC_TLS_CTN_SPECIFIED;
-
-        /* get CTN name */
-        assert(!strcmp(LYD_NAME(node->next), "name"));
-        name = lyd_get_value(node->next);
     } else if (!strcmp(map_type, "san-rfc822-name")) {
         m_type = NC_TLS_CTN_SAN_RFC822_NAME;
     } else if (!strcmp(map_type, "san-dns-name")) {
@@ -3119,9 +3115,42 @@ nc_server_config_map_type(const struct lyd_node *node, enum nc_operation UNUSED(
 
     /* mandatory node, no need to check the op */
     ctn->map_type = m_type;
-    if (name) {
-        ctn->name = strdup(name);
+
+cleanup:
+    return ret;
+}
+
+static int
+nc_server_config_name(const struct lyd_node *node, enum nc_operation op)
+{
+    int ret = 0;
+    struct nc_ctn *ctn;
+    struct nc_ch_client *ch_client = NULL;
+
+    assert(!strcmp(LYD_NAME(node), "name"));
+
+    /* we only care about this node if it is a child of cert-to-name,
+     * because otherwise it is most likely a key of a list and such cases are handled together with the list */
+    if (!node->parent || strcmp(LYD_NAME(node->parent), "cert-to-name")) {
+        return 0;
+    }
+
+    if (is_ch(node) && nc_server_config_get_ch_client(node, &ch_client)) {
+        return 1;
+    }
+
+    if (nc_server_config_get_ctn(node, ch_client, &ctn)) {
+        ret = 1;
+        goto cleanup;
+    }
+
+    if ((op == NC_OP_CREATE) || (op == NC_OP_REPLACE)) {
+        free(ctn->name);
+        ctn->name = strdup(lyd_get_value(node));
         NC_CHECK_ERRMEM_GOTO(!ctn->name, ret = 1, cleanup);
+    } else {
+        free(ctn->name);
+        ctn->name = NULL;
     }
 
 cleanup:
@@ -3649,6 +3678,8 @@ nc_server_config_parse_netconf_server(const struct lyd_node *node, enum nc_opera
         ret = nc_server_config_map_type(node, op);
     } else if (!strcmp(name, "max-probes")) {
         ret = nc_server_config_max_probes(node, op);
+    } else if (!strcmp(name, "name")) {
+        ret = nc_server_config_name(node, op);
     } else if (!strcmp(name, "none")) {
         ret = nc_server_config_none(node, op);
     } else if (!strcmp(name, "password")) {
