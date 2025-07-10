@@ -2305,17 +2305,17 @@ nc_server_config_delete_substring(const char *haystack, const char *needle, cons
 static int
 nc_server_config_transport_params(const char *algorithm, char **alg_store, enum nc_operation op)
 {
-    int ret = 0;
+    int ret = 0, r;
     char *alg = NULL;
 
     if (!strncmp(algorithm, "openssh-", 8)) {
         /* if the name starts with openssh, convert it to it's original libssh accepted form */
-        ret = asprintf(&alg, "%s@openssh.com", algorithm + 8);
-        NC_CHECK_ERRMEM_GOTO(ret == -1, ret = 1; alg = NULL, cleanup);
+        r = asprintf(&alg, "%s@openssh.com", algorithm + 8);
+        NC_CHECK_ERRMEM_GOTO(r == -1, ret = 1; alg = NULL, cleanup);
     } else if (!strncmp(algorithm, "libssh-", 7)) {
         /* if the name starts with libssh, convert it to it's original libssh accepted form */
-        ret = asprintf(&alg, "%s@libssh.org", algorithm + 7);
-        NC_CHECK_ERRMEM_GOTO(ret == -1, ret = 1; alg = NULL, cleanup);
+        r = asprintf(&alg, "%s@libssh.org", algorithm + 7);
+        NC_CHECK_ERRMEM_GOTO(r == -1, ret = 1; alg = NULL, cleanup);
     } else {
         alg = strdup(algorithm);
         NC_CHECK_ERRMEM_GOTO(!alg, ret = 1, cleanup);
