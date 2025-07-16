@@ -313,16 +313,6 @@ find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(netconf2 ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
 
-# function compatibility - getpeereid on QNX
-if(${CMAKE_SYSTEM_NAME} MATCHES "QNX")
-    target_link_libraries(netconf2 -lsocket)
-    list(APPEND CMAKE_REQUIRED_LIBRARIES socket)
-    list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES pthread)
-    list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_QNX_SOURCE)
-    check_symbol_exists(getpeereid "sys/types.h;unistd.h" HAVE_GETPEEREID)
-    list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_QNX_SOURCE)
-endif()
-
 # set sources
 target_sources(netconf2 PRIVATE ${libsrc} ${compatsrc})
 

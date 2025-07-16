@@ -79,8 +79,10 @@
 #cmakedefine HAVE_STRDUPA
 #cmakedefine HAVE_STRCHRNUL
 #cmakedefine HAVE_GET_CURRENT_DIR_NAME
-#cmakedefine HAVE_CRYPT_R
 #cmakedefine HAVE_TIMEGM
+#cmakedefine HAVE_CRYPT_R
+#cmakedefine HAVE_SO_PEERCRED
+#cmakedefine HAVE_GETPEEREID
 
 #ifndef bswap64
 #define bswap64(val) \
@@ -218,12 +220,10 @@ char *get_current_dir_name(void);
 
 #ifndef HAVE_CRYPT_R
 
-# if !defined (__FreeBSD__)
 /* unused anyway */
 struct crypt_data {
     char a;
 };
-# endif
 
 char *crypt_r(const char *phrase, const char *setting, struct crypt_data *data);
 #endif
@@ -231,5 +231,15 @@ char *crypt_r(const char *phrase, const char *setting, struct crypt_data *data);
 #ifndef HAVE_TIMEGM
 time_t timegm(struct tm *tm);
 #endif
+
+/**
+ * @brief Get UID of the owner of a socket.
+ *
+ * @param[in] sock Socket to analyze.
+ * @param[out] uid Socket owner UID.
+ * @return 0 on success,
+ * @return -1 on error.
+ */
+int unsock_get_uid(int sock, uid_t *uid);
 
 #endif /* _COMPAT_H_ */

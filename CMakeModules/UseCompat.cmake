@@ -83,6 +83,19 @@ macro(USE_COMPAT)
         check_symbol_exists(crypt_r "unistd.h" HAVE_CRYPT_R)
     endif()
 
+    # unsock_get_uid
+    check_symbol_exists(SO_PEERCRED "sys/socket.h" HAVE_SO_PEERCRED)
+    if(NOT HAVE_SO_PEERCRED)
+        if(${CMAKE_SYSTEM_NAME} MATCHES "QNX")
+            target_link_libraries(netconf2 -lsocket)
+            list(APPEND CMAKE_REQUIRED_LIBRARIES socket)
+            list(REMOVE_ITEM CMAKE_REQUIRED_LIBRARIES pthread)
+            list(APPEND CMAKE_REQUIRED_DEFINITIONS -D_QNX_SOURCE)
+        endif()
+        check_symbol_exists(getpeereid "sys/types.h;unistd.h" HAVE_GETPEEREID)
+        list(REMOVE_ITEM CMAKE_REQUIRED_DEFINITIONS -D_QNX_SOURCE)
+    endif()
+
     test_big_endian(IS_BIG_ENDIAN)
 
     check_include_file("stdatomic.h" HAVE_STDATOMIC)

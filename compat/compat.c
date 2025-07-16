@@ -13,6 +13,8 @@
  */
 #define _POSIX_C_SOURCE 200809L /* fdopen, _POSIX_PATH_MAX, strdup */
 #define _ISOC99_SOURCE /* vsnprintf */
+#define _QNX_SOURCE /* getpeereid */
+#define _GNU_SOURCE /* SO_PEERCRED */
 
 #include "compat.h"
 
@@ -24,7 +26,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -424,3 +429,30 @@ timegm(struct tm *tm)
 }
 
 #endif
+
+int
+unsock_get_uid(int sock, uid_t *uid)
+{
+    int r;
+
+#if defined(HAVE_SO_PEERCRED)
+    struct ucred ucred;
+    socklen_t len;
+
+    len = sizeof(ucred);
+    r = getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
+    if (!r) {
+        *uid = ucred.uid;
+    }
+#elif defined(GETPEEREUID)
+    r = getpeereid(sock, uid, NULL);
+#else
+    (void)sock;
+    (void)uid;
+
+    r = -1;
+    errno = ENOSYS;
+#endif
+
+    return r;
+}

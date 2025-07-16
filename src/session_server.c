@@ -12,8 +12,7 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
-#define _QNX_SOURCE /* getpeereid */
-#define _GNU_SOURCE /* threads, SO_PEERCRED */
+#define _GNU_SOURCE /* threads */
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -2325,43 +2324,6 @@ cleanup:
     return ret;
 }
 
-#if defined (SO_PEERCRED) || defined (HAVE_GETPEEREID)
-
-/**
- * @brief Get UID of the owner of a socket.
- *
- * @param[in] sock Socket to analyze.
- * @param[out] uid Socket owner UID.
- * @return 0 on success,
- * @return -1 on error.
- */
-static int
-nc_get_uid(int sock, uid_t *uid)
-{
-    int r;
-
-#ifdef SO_PEERCRED
-    struct ucred ucred;
-    socklen_t len;
-
-    len = sizeof(ucred);
-    r = getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
-    if (!r) {
-        *uid = ucred.uid;
-    }
-#else
-    r = getpeereid(sock, uid, NULL);
-#endif
-
-    if (r < 0) {
-        ERR(NULL, "Failed to get owner UID of a UNIX socket (%s).", strerror(errno));
-        return -1;
-    }
-    return 0;
-}
-
-#endif
-
 /**
  * @brief Fully accept a session on a connected UNIX socket.
  *
@@ -2373,14 +2335,13 @@ nc_get_uid(int sock, uid_t *uid)
 static int
 nc_accept_unix_session(struct nc_session *session, int sock)
 {
-#if defined (SO_PEERCRED) || defined (HAVE_GETPEEREID)
     struct passwd *pw, pw_buf;
     char *username;
     uid_t uid = 0;
     char *buf = NULL;
     size_t buf_len = 0;
 
-    if (nc_get_uid(sock, &uid)) {
+    if (unsock_get_uid(sock, &uid)) {
         close(sock);
         return -1;
     }
@@ -2405,13 +2366,6 @@ nc_accept_unix_session(struct nc_session *session, int sock)
     session->ti.unixsock.sock = sock;
 
     return 1;
-#else
-    (void)session;
-    (void)sock;
-
-    ERR(session, "Unable to learn the identity of the client connected to the UNIX socket, terminating.");
-    return -1;
-#endif
 }
 
 API int
