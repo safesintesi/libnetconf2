@@ -13,6 +13,7 @@
  *     https://opensource.org/licenses/BSD-3-Clause
  */
 
+#include <security/pam_appl.h>
 #include <security/pam_modules.h>
 #include <stdio.h>
 #include <stdlib.h>
