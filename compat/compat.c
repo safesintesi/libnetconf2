@@ -435,7 +435,7 @@ unsock_get_uid(int sock, uid_t *uid)
 {
     int r;
 
-#if defined(HAVE_SO_PEERCRED)
+#if defined (HAVE_SO_PEERCRED)
     struct ucred ucred;
     socklen_t len;
 
@@ -444,7 +444,7 @@ unsock_get_uid(int sock, uid_t *uid)
     if (!r) {
         *uid = ucred.uid;
     }
-#elif defined(GETPEEREUID)
+#elif defined (GETPEEREUID)
     r = getpeereid(sock, uid, NULL);
 #else
     (void)sock;
