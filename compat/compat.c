@@ -444,7 +444,7 @@ unsock_get_uid(int sock, uid_t *uid)
     if (!r) {
         *uid = ucred.uid;
     }
-#elif defined (GETPEEREID)
+#elif defined (HAVE_GETPEEREID)
     r = getpeereid(sock, uid, NULL);
 #else
     (void)sock;
