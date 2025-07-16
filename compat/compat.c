@@ -16,7 +16,6 @@
 
 #include "compat.h"
 
-#include <crypt.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
