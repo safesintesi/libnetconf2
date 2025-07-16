@@ -17,7 +17,6 @@
 
 #include "server_config_util.h"
 
-#include <crypt.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
