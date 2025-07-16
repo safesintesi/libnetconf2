@@ -67,6 +67,8 @@ macro(USE_COMPAT)
 
     check_function_exists(timegm HAVE_TIMEGM)
 
+    check_include_file("alloca.h" HAVE_ALLOCA_H)
+
     # crypt
     check_include_file("crypt.h" HAVE_CRYPT_H)
 
