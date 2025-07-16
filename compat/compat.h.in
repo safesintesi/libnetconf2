@@ -218,10 +218,12 @@ char *get_current_dir_name(void);
 
 #ifndef HAVE_CRYPT_R
 
+# if !defined (__FreeBSD__)
 /* unused anyway */
 struct crypt_data {
     char a;
 };
+# endif
 
 char *crypt_r(const char *phrase, const char *setting, struct crypt_data *data);
 #endif
