@@ -3,7 +3,7 @@
  * @author Michal Vasko <mvasko@cesnet.cz>
  * @brief compatibility functions
  *
- * Copyright (c) 2021 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2021 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -11,7 +11,9 @@
  *
  *     https://opensource.org/licenses/BSD-3-Clause
  */
-#define _POSIX_C_SOURCE 200809L /* fdopen, _POSIX_PATH_MAX, strdup */
+#if !defined (__FreeBSD__) /* hides getpeereid */
+# define _POSIX_C_SOURCE 200809L /* fdopen, _POSIX_PATH_MAX, strdup */
+#endif
 #define _ISOC99_SOURCE /* vsnprintf */
 #define _QNX_SOURCE /* getpeereid */
 #define _GNU_SOURCE /* SO_PEERCRED */
