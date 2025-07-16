@@ -238,7 +238,7 @@ time_t timegm(struct tm *tm);
  * @param[in] sock Socket to analyze.
  * @param[out] uid Socket owner UID.
  * @return 0 on success,
- * @return -1 on error.
+ * @return -1 on error, errno set.
  */
 int unsock_get_uid(int sock, uid_t *uid);
 

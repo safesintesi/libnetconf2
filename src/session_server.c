@@ -2342,6 +2342,7 @@ nc_accept_unix_session(struct nc_session *session, int sock)
     size_t buf_len = 0;
 
     if (unsock_get_uid(sock, &uid)) {
+        ERR(session, "Failed to get UID of a socket (%s).", strerror(errno));
         close(sock);
         return -1;
     }
