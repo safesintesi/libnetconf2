@@ -77,7 +77,7 @@ macro(USE_COMPAT)
     elseif(NOT APPLE)
         list(APPEND CMAKE_REQUIRED_LIBRARIES -lcrypt)
     endif()
-    check_symbol_exists(crypt_r "crypt.h" HAVE_CRYPT_R)
+    check_symbol_exists(crypt_r "crypt.h;unistd.h" HAVE_CRYPT_R)
 
     test_big_endian(IS_BIG_ENDIAN)
 
