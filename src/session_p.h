@@ -5,7 +5,7 @@
  * @brief libnetconf2 session manipulation
  *
  * @copyright
- * Copyright (c) 2017 - 2023 CESNET, z.s.p.o.
+ * Copyright (c) 2017 - 2025 CESNET, z.s.p.o.
  *
  * This source code is licensed under BSD 3-Clause License (the "License").
  * You may not use this file except in compliance with the License.
@@ -40,6 +40,82 @@
 extern struct nc_server_opts server_opts;
 
 /**
+ * Size added to the reader buffer on realloc.
+ * Used only for NETCONF 1.0 messages (always the hello message).
+ */
+#define NC_READ_BUF_SIZE_STEP 512
+
+/**
+ * Maximum size of a framing message chunk (spec max is 2^32 - 1).
+ */
+#define NC_WRITE_CHUNK_SIZE_MAX 1024 * 10
+
+/**
+ * Sleep time in usec to wait between nc_recv_notif() calls.
+ */
+#define NC_CLIENT_NOTIF_THREAD_SLEEP 10000
+
+/**
+ * Timeout in msec for transport-related data to arrive (ssh_handle_key_exchange(), SSL_accept(), SSL_connect()).
+ * It can be quite a lot on slow machines (waiting for TLS cert-to-name resolution, ...).
+ */
+#define NC_TRANSPORT_TIMEOUT 10000
+
+/**
+ * Timeout in msec for acquiring a lock of a session (used with a condition, so higher numbers could be required
+ * only in case of extreme concurrency).
+ */
+#define NC_SESSION_LOCK_TIMEOUT 500
+
+/**
+ * Timeout in msec for acquiring a lock of a session that is supposed to be freed.
+ */
+#define NC_SESSION_FREE_LOCK_TIMEOUT 1000
+
+/**
+ * Timeout in msec for a thread to wait for its turn to work with a pollsession structure.
+ */
+#define NC_PS_QUEUE_TIMEOUT 5000
+
+/**
+ * Time slept in msec if no endpoint was created for a running Call Home client.
+ */
+#define NC_CH_NO_ENDPT_WAIT 1000
+
+/**
+ * Time slept in msec between Call Home thread session idle timeout checks.
+ */
+#define NC_CH_THREAD_IDLE_TIMEOUT_SLEEP 1000
+
+/**
+ * Timeout in msec for a Call Home socket to establish its connection.
+ */
+#define NC_CH_CONNECT_TIMEOUT 500
+
+/**
+ * Number of sockets kept waiting to be accepted.
+ */
+#define NC_REVERSE_QUEUE 5
+
+/**
+ * Time slept in msec in each cycle of the client monitoring thread.
+ */
+#define NC_CLIENT_MONITORING_BACKOFF 200
+
+/**
+ * Timeout in msec for acquiring a lock of a client monitoring thread.
+ */
+#define NC_CLIENT_MONITORING_LOCK_TIMEOUT 500
+
+/**
+ * TLS key log file environment variable name.
+ */
+#define NC_TLS_KEYLOGFILE_ENV "SSLKEYLOGFILE"
+
+#define NC_VERSION_10_ENDTAG "]]>]]>"
+#define NC_VERSION_10_ENDTAG_LEN 6
+
+/**
  * Enumeration of diff operation types.
  */
 enum nc_operation {
@@ -65,11 +141,10 @@ enum nc_store_type {
 #include <curl/curl.h>
 #include <libssh/libssh.h>
 
-/* seconds */
+/**
+ * Timeout set for libssh (s).
+ */
 #define NC_SSH_TIMEOUT 10
-
-/* number of all supported authentication methods */
-#define NC_SSH_AUTH_COUNT 3
 
 /**
  * Enumeration of SSH public key formats.
@@ -335,6 +410,9 @@ struct nc_bind {
 };
 
 #ifdef NC_ENABLED_SSH_TLS
+
+/* number of all supported authentication methods */
+#define NC_SSH_AUTH_COUNT 3
 
 struct nc_client_ssh_opts {
     char *knownhosts_path;  /**< path to known_hosts file */
@@ -649,68 +727,6 @@ struct nc_server_opts {
 };
 
 /**
- * Sleep time in usec to wait between nc_recv_notif() calls.
- */
-#define NC_CLIENT_NOTIF_THREAD_SLEEP 10000
-
-/**
- * Timeout in msec for transport-related data to arrive (ssh_handle_key_exchange(), SSL_accept(), SSL_connect()).
- * It can be quite a lot on slow machines (waiting for TLS cert-to-name resolution, ...).
- */
-#define NC_TRANSPORT_TIMEOUT 10000
-
-/**
- * Timeout in msec for acquiring a lock of a session (used with a condition, so higher numbers could be required
- * only in case of extreme concurrency).
- */
-#define NC_SESSION_LOCK_TIMEOUT 500
-
-/**
- * Timeout in msec for acquiring a lock of a session that is supposed to be freed.
- */
-#define NC_SESSION_FREE_LOCK_TIMEOUT 1000
-
-/**
- * Timeout in msec for a thread to wait for its turn to work with a pollsession structure.
- */
-#define NC_PS_QUEUE_TIMEOUT 5000
-
-/**
- * Time slept in msec if no endpoint was created for a running Call Home client.
- */
-#define NC_CH_NO_ENDPT_WAIT 1000
-
-/**
- * Time slept in msec between Call Home thread session idle timeout checks.
- */
-#define NC_CH_THREAD_IDLE_TIMEOUT_SLEEP 1000
-
-/**
- * Timeout in msec for a Call Home socket to establish its connection.
- */
-#define NC_CH_CONNECT_TIMEOUT 500
-
-/**
- * Number of sockets kept waiting to be accepted.
- */
-#define NC_REVERSE_QUEUE 5
-
-/**
- * Time slept in msec in each cycle of the client monitoring thread.
- */
-#define NC_CLIENT_MONITORING_BACKOFF 200
-
-/**
- * Timeout in msec for acquiring a lock of a client monitoring thread.
- */
-#define NC_CLIENT_MONITORING_LOCK_TIMEOUT 500
-
-/**
- * TLS key log file environment variable name.
- */
-#define NC_TLS_KEYLOGFILE_ENV "SSLKEYLOGFILE"
-
-/**
  * @brief Type of the session
  */
 typedef enum {
@@ -725,9 +741,6 @@ enum nc_version {
     NC_VERSION_10 = 0,  /**< NETCONF 1.0 - RFC 4741, 4742 */
     NC_VERSION_11 = 1   /**< NETCONF 1.1 - RFC 6241, 6242 */
 };
-
-#define NC_VERSION_10_ENDTAG "]]>]]>"
-#define NC_VERSION_10_ENDTAG_LEN 6
 
 /**
  * @brief Container to serialize RPC messages

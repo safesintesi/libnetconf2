@@ -57,8 +57,6 @@ const char *nc_msgtype2str[] = {
     "notification message",
 };
 
-#define BUFFERSIZE 512
-
 static ssize_t
 nc_read(struct nc_session *session, char *buf, uint32_t count, uint32_t inact_timeout, struct timespec *ts_act_timeout)
 {
@@ -174,68 +172,55 @@ nc_read(struct nc_session *session, char *buf, uint32_t count, uint32_t inact_ti
     return (ssize_t)readd;
 }
 
-static ssize_t
-nc_read_chunk(struct nc_session *session, size_t len, uint32_t inact_timeout, struct timespec *ts_act_timeout, char **chunk)
-{
-    ssize_t r;
-
-    assert(session);
-    assert(chunk);
-
-    if (!len) {
-        return 0;
-    }
-
-    *chunk = malloc((len + 1) * sizeof **chunk);
-    NC_CHECK_ERRMEM_RET(!*chunk, -1);
-
-    r = nc_read(session, *chunk, len, inact_timeout, ts_act_timeout);
-    if (r <= 0) {
-        free(*chunk);
-        return -1;
-    }
-
-    /* terminating null byte */
-    (*chunk)[r] = 0;
-
-    return r;
-}
-
+/**
+ * @brief Read data until a specific characters sequence is found.
+ *
+ * @param[in] session Session to read from.
+ * @param[in] endtag End tag to match, no characters read after that.
+ * @param[in] inact_timeout Inactive timeout to use.
+ * @param[in] ts_act_timeout Active timeout to use.
+ * @param[in,out] buf Buffer for read data, may be NULL.
+ * @param[in,out] buf_size Current size of @p buf - 1 (actual size is one byte larger).
+ * @return Number of characters read;
+ * @return -1 on error.
+ */
 static ssize_t
 nc_read_until(struct nc_session *session, const char *endtag, uint32_t inact_timeout, struct timespec *ts_act_timeout,
-        char **result)
+        char **buf, uint32_t *buf_size)
 {
-    char *chunk = NULL;
-    size_t size, count = 0, r, len, i, matched = 0;
+    char *local_buf = NULL;
+    uint32_t local_size = 0;
+    size_t r, len, i, matched = 0;
+    ssize_t count = 0;
 
     assert(session);
     assert(endtag);
 
-    size = BUFFERSIZE;
-    chunk = malloc((size + 1) * sizeof *chunk);
-    NC_CHECK_ERRMEM_RET(!chunk, -1);
+    if (!buf) {
+        buf = &local_buf;
+        buf_size = &local_size;
+    }
 
     len = strlen(endtag);
-    while (1) {
+    do {
         /* resize buffer if needed */
-        if ((count + (len - matched)) >= size) {
-            /* get more memory */
-            size = size + BUFFERSIZE;
-            chunk = nc_realloc(chunk, (size + 1) * sizeof *chunk);
-            NC_CHECK_ERRMEM_RET(!chunk, -1);
+        if ((count + (len - matched)) > *buf_size) {
+            *buf_size += NC_READ_BUF_SIZE_STEP;
+            *buf = nc_realloc(*buf, (*buf_size + 1) * sizeof **buf);
+            NC_CHECK_ERRMEM_GOTO(!*buf, count = -1, cleanup);
         }
 
         /* get another character */
-        r = nc_read(session, &(chunk[count]), len - matched, inact_timeout, ts_act_timeout);
+        r = nc_read(session, *buf + count, len - matched, inact_timeout, ts_act_timeout);
         if (r != len - matched) {
-            free(chunk);
-            return -1;
+            count = -1;
+            goto cleanup;
         }
 
         count += len - matched;
 
         for (i = len - matched; i > 0; i--) {
-            if (!strncmp(&endtag[matched], &(chunk[count - i]), i)) {
+            if (!strncmp(endtag + matched, *buf + (count - i), i)) {
                 /*part of endtag found */
                 matched += i;
                 break;
@@ -245,19 +230,13 @@ nc_read_until(struct nc_session *session, const char *endtag, uint32_t inact_tim
         }
 
         /* whole endtag found */
-        if (matched == len) {
-            break;
-        }
-    }
+    } while (matched < len);
 
     /* terminating null byte */
-    chunk[count] = 0;
+    (*buf)[count] = 0;
 
-    if (result) {
-        *result = chunk;
-    } else {
-        free(chunk);
-    }
+cleanup:
+    free(local_buf);
     return count;
 }
 
@@ -265,14 +244,15 @@ int
 nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, int passing_io_lock)
 {
     int ret = 1, r, io_locked = passing_io_lock;
-    char *data = NULL, *chunk;
-    uint64_t chunk_len, len = 0;
-    /* use timeout in milliseconds instead seconds */
-    uint32_t inact_timeout = NC_READ_INACT_TIMEOUT * 1000;
+    char *data = NULL, *frame_size_buf = NULL;
+    uint32_t chunk_len, frame_buf_len, data_len = 0, inact_timeout;
     struct timespec ts_act_timeout;
 
     assert(session && msg);
     *msg = NULL;
+
+    /* use timeout in milliseconds instead seconds */
+    inact_timeout = NC_READ_INACT_TIMEOUT * 1000;
 
     if ((session->status != NC_STATUS_RUNNING) && (session->status != NC_STATUS_STARTING)) {
         ERR(session, "Invalid session to read from.");
@@ -294,7 +274,7 @@ nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, i
     /* read the message */
     switch (session->version) {
     case NC_VERSION_10:
-        r = nc_read_until(session, NC_VERSION_10_ENDTAG, inact_timeout, &ts_act_timeout, &data);
+        r = nc_read_until(session, NC_VERSION_10_ENDTAG, inact_timeout, &ts_act_timeout, &data, &data_len);
         if (r == -1) {
             ret = r;
             goto cleanup;
@@ -304,21 +284,25 @@ nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, i
         data[r - NC_VERSION_10_ENDTAG_LEN] = '\0';
         break;
     case NC_VERSION_11:
+        /* prepare the buffer large enough for reading the framing chunk size */
+        frame_buf_len = 11;
+        frame_size_buf = malloc(frame_buf_len + 1);
+        NC_CHECK_ERRMEM_GOTO(!frame_size_buf, ret = -1, cleanup);
+
         while (1) {
-            r = nc_read_until(session, "\n#", inact_timeout, &ts_act_timeout, NULL);
+            r = nc_read_until(session, "\n#", inact_timeout, &ts_act_timeout, NULL, NULL);
             if (r == -1) {
                 ret = r;
                 goto cleanup;
             }
-            r = nc_read_until(session, "\n", inact_timeout, &ts_act_timeout, &chunk);
+            r = nc_read_until(session, "\n", inact_timeout, &ts_act_timeout, &frame_size_buf, &frame_buf_len);
             if (r == -1) {
                 ret = r;
                 goto cleanup;
             }
 
-            if (!strcmp(chunk, "#\n")) {
+            if (!strcmp(frame_size_buf, "#\n")) {
                 /* end of chunked framing message */
-                free(chunk);
                 if (!data) {
                     ERR(session, "Invalid frame chunk delimiters.");
                     ret = -2;
@@ -328,28 +312,27 @@ nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, i
             }
 
             /* convert string to the size of the following chunk */
-            chunk_len = strtoul(chunk, (char **)NULL, 10);
-            free(chunk);
+            chunk_len = strtoul(frame_size_buf, NULL, 10);
             if (!chunk_len) {
                 ERR(session, "Invalid frame chunk size detected, fatal error.");
                 ret = -2;
                 goto cleanup;
             }
 
-            /* now we have size of next chunk, so read the chunk */
-            r = nc_read_chunk(session, chunk_len, inact_timeout, &ts_act_timeout, &chunk);
+            /* now we have size of next chunk, prepare a buffer large enough */
+            data = nc_realloc(data, data_len + chunk_len + 1);
+            NC_CHECK_ERRMEM_GOTO(!data, ret = -1, cleanup);
+
+            /* read the next chunk */
+            r = nc_read(session, data + data_len, chunk_len, inact_timeout, &ts_act_timeout);
             if (r == -1) {
                 ret = r;
                 goto cleanup;
             }
 
-            /* realloc message buffer, remember to count terminating null byte */
-            data = nc_realloc(data, len + chunk_len + 1);
-            NC_CHECK_ERRMEM_GOTO(!data, ret = -1, cleanup);
-            memcpy(data + len, chunk, chunk_len);
-            len += chunk_len;
-            data[len] = '\0';
-            free(chunk);
+            /* update data length and terminate the data */
+            data_len += chunk_len;
+            data[data_len] = '\0';
         }
 
         break;
@@ -374,6 +357,7 @@ cleanup:
         /* SESSION IO UNLOCK */
         nc_session_io_unlock(session, __func__);
     }
+    free(frame_size_buf);
     free(data);
     return ret;
 }
@@ -551,10 +535,9 @@ nc_session_is_connected(const struct nc_session *session)
     return 1;
 }
 
-#define WRITE_BUFSIZE (2 * BUFFERSIZE)
 struct nc_wclb_arg {
     struct nc_session *session;
-    char buf[WRITE_BUFSIZE];
+    char buf[NC_WRITE_CHUNK_SIZE_MAX];
     uint32_t len;
 };
 
@@ -757,7 +740,7 @@ nc_write_clb(void *arg, const void *buf, uint32_t count, int xmlcontent)
         return ret;
     }
 
-    if (warg->len && (warg->len + count > WRITE_BUFSIZE)) {
+    if (warg->len && (warg->len + count > NC_WRITE_CHUNK_SIZE_MAX)) {
         /* dump current buffer */
         c = nc_write_clb_flush(warg);
         if (c == -1) {
@@ -766,7 +749,7 @@ nc_write_clb(void *arg, const void *buf, uint32_t count, int xmlcontent)
         ret += c;
     }
 
-    if (!xmlcontent && (count > WRITE_BUFSIZE)) {
+    if (!xmlcontent && (count > NC_WRITE_CHUNK_SIZE_MAX)) {
         /* write directly */
         c = nc_write_starttag_and_msg(warg->session, buf, count);
         if (c == -1) {
@@ -777,7 +760,7 @@ nc_write_clb(void *arg, const void *buf, uint32_t count, int xmlcontent)
         /* keep in buffer and write later */
         if (xmlcontent) {
             for (l = 0; l < count; l++) {
-                if (warg->len + 5 >= WRITE_BUFSIZE) {
+                if (warg->len + 5 >= NC_WRITE_CHUNK_SIZE_MAX) {
                     /* buffer is full */
                     c = nc_write_clb_flush(warg);
                     if (c == -1) {
@@ -810,7 +793,7 @@ nc_write_clb(void *arg, const void *buf, uint32_t count, int xmlcontent)
             }
         } else {
             memcpy(&warg->buf[warg->len], buf, count);
-            warg->len += count; /* is <= WRITE_BUFSIZE */
+            warg->len += count; /* is <= NC_WRITE_CHUNK_SIZE_MAX */
             ret += count;
         }
     }

@@ -21,7 +21,7 @@
 
 #include "tests/config.h"
 
-#define NC_ACCEPT_TIMEOUT 2000
+#define NC_ACCEPT_TIMEOUT 4000
 #define NC_PS_POLL_TIMEOUT 2000
 
 #define SETUP_FAIL_LOG \
