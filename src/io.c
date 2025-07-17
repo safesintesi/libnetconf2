@@ -202,8 +202,8 @@ nc_read_chunk(struct nc_session *session, size_t len, uint32_t inact_timeout, st
 }
 
 static ssize_t
-nc_read_until(struct nc_session *session, const char *endtag, size_t limit, uint32_t inact_timeout,
-        struct timespec *ts_act_timeout, char **result)
+nc_read_until(struct nc_session *session, const char *endtag, uint32_t inact_timeout, struct timespec *ts_act_timeout,
+        char **result)
 {
     char *chunk = NULL;
     size_t size, count = 0, r, len, i, matched = 0;
@@ -211,23 +211,12 @@ nc_read_until(struct nc_session *session, const char *endtag, size_t limit, uint
     assert(session);
     assert(endtag);
 
-    if (limit && (limit < BUFFERSIZE)) {
-        size = limit;
-    } else {
-        size = BUFFERSIZE;
-    }
+    size = BUFFERSIZE;
     chunk = malloc((size + 1) * sizeof *chunk);
     NC_CHECK_ERRMEM_RET(!chunk, -1);
 
     len = strlen(endtag);
     while (1) {
-        if (limit && (count == limit)) {
-            free(chunk);
-            WRN(session, "Reading limit (%d) reached.", limit);
-            ERR(session, "Invalid input data (missing \"%s\" sequence).", endtag);
-            return -1;
-        }
-
         /* resize buffer if needed */
         if ((count + (len - matched)) >= size) {
             /* get more memory */
@@ -305,7 +294,7 @@ nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, i
     /* read the message */
     switch (session->version) {
     case NC_VERSION_10:
-        r = nc_read_until(session, NC_VERSION_10_ENDTAG, 0, inact_timeout, &ts_act_timeout, &data);
+        r = nc_read_until(session, NC_VERSION_10_ENDTAG, inact_timeout, &ts_act_timeout, &data);
         if (r == -1) {
             ret = r;
             goto cleanup;
@@ -316,12 +305,12 @@ nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, i
         break;
     case NC_VERSION_11:
         while (1) {
-            r = nc_read_until(session, "\n#", 0, inact_timeout, &ts_act_timeout, NULL);
+            r = nc_read_until(session, "\n#", inact_timeout, &ts_act_timeout, NULL);
             if (r == -1) {
                 ret = r;
                 goto cleanup;
             }
-            r = nc_read_until(session, "\n", 0, inact_timeout, &ts_act_timeout, &chunk);
+            r = nc_read_until(session, "\n", inact_timeout, &ts_act_timeout, &chunk);
             if (r == -1) {
                 ret = r;
                 goto cleanup;
